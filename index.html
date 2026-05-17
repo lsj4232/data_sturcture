@@ -90,6 +90,8 @@
 
   .filter-btn:hover { background: var(--nav-hover); color: var(--accent); border-color: var(--accent); }
   .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .filter-btn-wrong:hover { background: #fef2f2; color: #b91c1c; border-color: #dc2626; }
+  .filter-btn-wrong.active { background: #dc2626; color: #fff; border-color: #dc2626; }
 
   .btn-random {
     font-family: 'Noto Sans KR', sans-serif;
@@ -706,12 +708,39 @@
     align-items: center;
     justify-content: space-between;
     background: var(--surface2);
+    flex-wrap: wrap;
+    gap: 10px;
   }
 
   .nav-btns {
     display: flex;
     gap: 8px;
   }
+
+  .attempt-btns {
+    display: flex;
+    gap: 6px;
+  }
+  .btn-attempt {
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 0.78rem;
+    padding: 5px 11px;
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .attempt-count {
+    display: inline-block;
+    margin-left: 4px;
+    min-width: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .btn-wrong:hover, .btn-wrong.flash { background: #fef2f2; border-color: #dc2626; color: #b91c1c; }
+  .btn-correct:hover, .btn-correct.flash { background: #f0fdf4; border-color: #16a34a; color: #15803d; }
 
   .btn-nav {
     font-family: 'Noto Sans KR', sans-serif;
@@ -844,6 +873,39 @@
 
   .ans-blank { display: block; height: 6px; }
 
+  /* 코드 / ASCII art / 표 줄 — monospace + 공백 보존 */
+  .ans-code-line {
+    display: block;
+    font-family: 'D2 Coding', 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace;
+    font-size: 0.84rem;
+    line-height: 1.55;
+    white-space: pre;
+    background: #f7f5ef;
+    padding: 1px 8px;
+    margin: 0;
+    overflow-x: auto;
+  }
+  /* 인접한 코드 줄이 한 블록처럼 보이도록 */
+  .ans-code-line:first-child,
+  .ans-line + .ans-code-line, .ans-section-header + .ans-code-line, .ans-subsection + .ans-code-line, .ans-blank + .ans-code-line {
+    border-top: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding-top: 6px;
+    margin-top: 4px;
+    border-top-left-radius: 4px; border-top-right-radius: 4px;
+  }
+  .ans-code-line:last-child,
+  .ans-code-line + .ans-line, .ans-code-line + .ans-section-header, .ans-code-line + .ans-subsection, .ans-code-line + .ans-blank {
+    /* 마지막 코드 줄의 아래쪽 마감 — :has 가 없어 다음 형제 기준으로 처리 어려움 */
+  }
+  /* 간단히: 코드 줄에 항상 좌측 강조 가는 선 */
+  .ans-code-line { border-left: 3px solid var(--accent); }
+
+  /* C 키워드 색상 */
+  .ans-code-line .ans-kw { color: #b91c1c; font-weight: 600; }
+  .ans-code-line .ans-num { color: #0369a1; }
+  .ans-code-line .ans-cmt { color: #6b7280; font-style: italic; }
+
   .ans-resolution {
     margin-top: 16px;
     padding: 10px 14px;
@@ -905,6 +967,8 @@
     .q-footer { padding: 8px 12px; }
     .btn-nav { font-size: 0.78rem; padding: 6px 12px; }
     .nav-pos { font-size: 0.75rem; }
+    .q-footer { padding: 8px 12px; gap: 6px; }
+    .btn-attempt { font-size: 0.72rem; padding: 4px 9px; }
 
     .passage-section { padding: 10px 12px; font-size: 0.86rem; line-height: 1.7; }
     .subq-text { font-size: 0.9rem; line-height: 1.75; }
@@ -986,6 +1050,10 @@
       <div class="nav-btns">
         <button class="btn-nav" id="btnPrev">◀ 이전</button>
         <button class="btn-nav" id="btnNext">다음 ▶</button>
+      </div>
+      <div class="attempt-btns">
+        <button class="btn-attempt btn-wrong" id="btnMarkWrong" title="이 설문을 틀린 것(복습 필요)으로 기록 (+1)">❌ 틀림 <span class="attempt-count" id="wrongCountDisplay">0</span></button>
+        <button class="btn-attempt btn-correct" id="btnMarkCorrect" title="이 설문을 맞춘 것(복습 완료)으로 기록 (+1)">✅ 맞음 <span class="attempt-count" id="correctCountDisplay">0</span></button>
       </div>
       <span class="nav-pos" id="navPos"></span>
     </div>
@@ -1097,6 +1165,18 @@ function getViewCount(prob, sq) {
 function incrementViewCount(prob, sq) {
   localStorage.setItem(viewCountKey(prob, sq), String(getViewCount(prob, sq) + 1));
 }
+
+// ── Per-sub-question wrong/correct attempt counts ──
+function attemptKey(prob, sq, kind) {
+  return `${kind}count:${prob.subject || '데이터구조론'}:${prob.exam}:${prob.problemNo}:${sq.no}`;
+}
+function getAttemptCount(prob, sq, kind) {
+  const n = parseInt(localStorage.getItem(attemptKey(prob, sq, kind)), 10);
+  return isNaN(n) ? 0 : n;
+}
+function incrementAttemptCount(prob, sq, kind) {
+  localStorage.setItem(attemptKey(prob, sq, kind), String(getAttemptCount(prob, sq, kind) + 1));
+}
 // ── Tag system — 답안/문제 키워드 기반 자동 태깅 ─────────────
 const TAG_DEFS = [
   { key: '그래프',       kws: ['그래프', 'DFS', 'BFS', '인접 행렬', '인접 리스트', '인접리스트', '인접행렬', 'Dijkstra', 'Floyd', 'Bellman', 'Kruskal', 'Prim', 'Sollin', 'Boruvka', 'MST', '신장 트리', '신장트리', '최단경로', '최단 경로'] },
@@ -1188,13 +1268,29 @@ function listSubjects() {
 function applyFilter(exam) {
   activeExam = exam;
   const pool = subjectItems(activeSubject);
-  let result = exam === 'all' ? pool : pool.filter(item => item.prob.exam === exam);
+  let result;
+  if (exam === 'wrong-only') {
+    result = pool.filter(it => getAttemptCount(it.prob, it.sq, 'wrong') > 0);
+  } else {
+    result = exam === 'all' ? pool : pool.filter(item => item.prob.exam === exam);
+  }
   // 태그 필터: activeTags 가 비어있지 않으면 OR semantics 로 추가 필터링
   if (activeTags.size > 0) {
     result = result.filter(item => matchesActiveTags(item.prob, item.sq));
   }
   filtered = result;
-  order = shuffleByViewCount([...Array(filtered.length).keys()]);
+  if (exam === 'wrong-only') {
+    // wrong 많이 한 순으로 정렬, ties random
+    const idxs = [...Array(filtered.length).keys()];
+    idxs.sort((a, b) => {
+      const ca = getAttemptCount(filtered[a].prob, filtered[a].sq, 'wrong');
+      const cb = getAttemptCount(filtered[b].prob, filtered[b].sq, 'wrong');
+      return (cb - ca) || (Math.random() - 0.5);
+    });
+    order = idxs;
+  } else {
+    order = shuffleByViewCount([...Array(filtered.length).keys()]);
+  }
   cursor = 0;
   showCurrent();
 }
@@ -1261,7 +1357,8 @@ function renderExamFilter() {
     + `<button class="filter-btn${activeExam === 'all' ? ' active' : ''}" data-exam="all">전체</button>`
     + exams.map(e =>
         `<button class="filter-btn${activeExam === e ? ' active' : ''}" data-exam="${escHtml(e)}">${escHtml(e)}</button>`
-      ).join('');
+      ).join('')
+    + `<button class="filter-btn filter-btn-wrong${activeExam === 'wrong-only' ? ' active' : ''}" data-exam="wrong-only" title="틀린(복습 필요) 횟수가 1회 이상인 설문만, 많이 틀린 순">❌ 틀린 문제만</button>`;
 }
 
 function shuffle(arr) {
@@ -1287,6 +1384,10 @@ function showCurrent() {
   document.getElementById('badgeProb').textContent = `문제-${prob.problemNo}`;
   document.getElementById('badgeSq').textContent = `설문(${sq.no})`;
   document.getElementById('badgePts').textContent = `${sq.points}점`;
+
+  // Wrong / correct attempt counts
+  document.getElementById('wrongCountDisplay').textContent = getAttemptCount(prob, sq, 'wrong');
+  document.getElementById('correctCountDisplay').textContent = getAttemptCount(prob, sq, 'correct');
 
   // Always exit quiz mode when moving to a new sub-question
   if (quizMode) endQuiz();
@@ -1320,7 +1421,10 @@ function showCurrent() {
 }
 
 function showEmpty() {
-  document.getElementById('passageText').textContent = '선택된 회차에 문제가 없습니다.';
+  const msg = activeExam === 'wrong-only'
+    ? '아직 ❌ 틀림으로 표시한 설문이 없습니다. 문제를 풀고 ❌ 틀림 버튼을 눌러보세요.'
+    : '선택된 회차/태그 조합에 해당하는 문제가 없습니다.';
+  document.getElementById('passageText').textContent = msg;
   document.getElementById('subqText').textContent = '';
   document.getElementById('answerContent').innerHTML = '';
   document.getElementById('navPos').textContent = '0 / 0';
@@ -1394,6 +1498,38 @@ function textToHtml(text, hlRanges) {
   return out.join('');
 }
 
+// 줄이 코드/ASCII art/표 처럼 보이는지 판단 — monospace 로 렌더할 후보
+function isCodeLikeLine(line) {
+  const t = line.trim();
+  if (!t) return false;
+  // ASCII art / 박스 문자
+  if (/[─│┐┘┌└├┤┬┴┼╱╲]/.test(t)) return true;
+  // 마크다운 표 또는 ASCII 표 시작
+  if (/^\|.*\|/.test(t)) return true;
+  if (/^\+[-=]/.test(t)) return true;
+  // 4공백 이상 들여쓰기 + 한글이 거의 없는 줄
+  const indent = line.length - line.trimStart().length;
+  const hangulCount = (t.match(/[가-힣]/g) || []).length;
+  if (indent >= 4 && hangulCount === 0) return true;
+  // C 키워드 + 괄호
+  if (/\b(void|int|char|float|double|if|else|for|while|return|struct|typedef|node_ptr|patricia|element|RBTNode)\b/.test(t) && /[(){};]/.test(t)) return true;
+  // 명백한 코드 흔적 : 화살표·세미콜론으로 끝, 한글 거의 없음
+  if (/(←|=>)/.test(t) && hangulCount <= 2) return true;
+  if (/[{};]\s*$/.test(t) && hangulCount <= 2) return true;
+  return false;
+}
+
+// 코드 줄 안의 C 키워드 / 주석을 강조 (이미 escape 된 HTML 위에 동작)
+const _C_KEYWORDS = ['void','int','char','float','double','short','long','if','else','for','while','do','return','struct','typedef','enum','switch','case','break','continue','static','const','sizeof','NULL','true','false','node_ptr','patricia','element','adj_node','RBTNode','tree_ptr','person'];
+function highlightCKeyword(html) {
+  for (const kw of _C_KEYWORDS) {
+    const re = new RegExp(`\\b${kw}\\b`, 'g');
+    html = html.replace(re, `<span class="ans-kw">${kw}</span>`);
+  }
+  html = html.replace(/(\/\/[^<\n]*)/g, '<span class="ans-cmt">$1</span>');
+  return html;
+}
+
 function renderAnswer(text, hlRanges) {
   if (!text) {
     document.getElementById('answerContent').innerHTML =
@@ -1416,6 +1552,9 @@ function renderAnswer(text, hlRanges) {
 
     if (!trimmed) {
       html += `<span class="ans-blank" data-line-start="${lineStart}"></span>`;
+    } else if (isCodeLikeLine(line)) {
+      const inner = highlightCKeyword(_renderLine(text, lineStart, lineEnd, sets) || '&nbsp;');
+      html += `<span class="ans-code-line" data-line-start="${lineStart}">${inner}</span>`;
     } else if (/^\d+\./.test(trimmed)) {
       const cls = (trimmed.includes('사안해결') || trimmed.includes('설문해결'))
         ? 'ans-resolution' : 'ans-section-header';
@@ -2011,6 +2150,20 @@ function bindEvents() {
   document.getElementById('btnNext').addEventListener('click', () => {
     if (cursor < filtered.length - 1) { cursor++; showCurrent(); }
   });
+
+  // ── Mark current sub-question as wrong / correct ──
+  function markAttempt(kind) {
+    if (filtered.length === 0) return;
+    const { prob, sq } = filtered[order[cursor]];
+    incrementAttemptCount(prob, sq, kind);
+    const btn = document.getElementById(kind === 'wrong' ? 'btnMarkWrong' : 'btnMarkCorrect');
+    const disp = document.getElementById(kind === 'wrong' ? 'wrongCountDisplay' : 'correctCountDisplay');
+    disp.textContent = getAttemptCount(prob, sq, kind);
+    btn.classList.add('flash');
+    setTimeout(() => btn.classList.remove('flash'), 350);
+  }
+  document.getElementById('btnMarkWrong').addEventListener('click', () => markAttempt('wrong'));
+  document.getElementById('btnMarkCorrect').addEventListener('click', () => markAttempt('correct'));
 
   document.getElementById('btnToggle').addEventListener('click', () => {
     answerRevealed ? hideAnswer() : revealAnswer();
