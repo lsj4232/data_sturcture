@@ -1,0 +1,17 @@
+.DS_Store
+*.swp
+*.pyc
+__pycache__/
+/tmp/
+
+# 47 MB zip 백업 — 큰 용량 + 출처 추적용일 뿐 학습엔 불필요
+_원본/
+
+# 다른 repo(byunrisa-study) 의 참고용 사본
+기출/
+
+# Claude Code 로컬 설정 / 워크트리
+.claude/
+
+# 미리보기 서버 등 임시 파일
+.tmp/
